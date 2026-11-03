@@ -1,0 +1,70 @@
+# Desktop installers for macOS (universal), Windows and Linux.
+# Push a tag like v0.2.0 (matching the version in src-tauri/tauri.conf.json) to build them;
+# they are attached to a draft GitHub release that you review and publish.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+          - platform: windows-latest
+            args: ""
+          - platform: ubuntu-22.04
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Linux system libraries
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Tablet PDF Writer v__VERSION__
+          releaseDraft: true
+          releaseBody: |
+            ## Install
+
+            **macOS** — download the `.dmg`, open it and drag the app to Applications.
+            The app is not signed with an Apple Developer certificate yet, so the first time:
+            open it, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+
+            **Windows** — run the `-setup.exe`. If SmartScreen warns, click **More info → Run anyway**.
+
+            **Linux** — use the `.AppImage` (make it executable) or install the `.deb`.
+
+            Your documents autosave to `Documents/Tablet PDF Writer`.
+          args: ${{ matrix.args }}
