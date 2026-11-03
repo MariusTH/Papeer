@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    desktop_tablet_pdf_writer_lib::run()
+    papeer_lib::run()
 }

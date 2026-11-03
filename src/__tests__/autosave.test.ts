@@ -5,7 +5,8 @@ const ops: string[] = [];
 let failWrites = false;
 
 vi.mock("@tauri-apps/api/path", () => ({
-  appDataDir: async () => "/appdata",
+  appDataDir: async () => "/support/com.mariushorne.papeer",
+  dirname: async (p: string) => p.split("/").slice(0, -1).join("/"),
   documentDir: async () => "/docs",
   join: async (...p: string[]) => p.join("/"),
 }));
@@ -22,8 +23,13 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
   readFile: async (p: string) => disk.get(p) as Uint8Array,
   rename: async (a: string, b: string) => {
     ops.push(`rename ${a} -> ${b}`);
-    disk.set(b, disk.get(a)!);
-    disk.delete(a);
+    // Files and whole folders.
+    for (const [k, v] of [...disk]) {
+      if (k === a || k.startsWith(a + "/")) {
+        disk.delete(k);
+        disk.set(b + k.slice(a.length), v);
+      }
+    }
   },
 }));
 vi.mock("../pdf/load", () => ({ openPdfDocument: async () => null }));
@@ -33,7 +39,7 @@ const { fileStore, setDocStore } = await import("../io/storage");
 setDocStore(fileStore);
 const { useStore } = await import("../model/store");
 const { addStroke } = await import("../model/ops");
-const { parseProject } = await import("../io/project");
+const { parseProject, serializeProject } = await import("../io/project");
 const { blankPage } = await import("../model/types");
 
 const stroke = (id: string) => ({ id, tool: "pen" as const, color: "#000000", size: 2, points: [{ x: 10, y: 10, p: 0.5 }] });
@@ -60,20 +66,20 @@ describe("autosave", () => {
   it("creates a library file on first edit, atomically, and remembers the session", async () => {
     edit("a");
     await flushSave();
-    expect(ops).toEqual(["write /docs/Tablet PDF Writer/Notes.inkpdf.tmp", "rename /docs/Tablet PDF Writer/Notes.inkpdf.tmp -> /docs/Tablet PDF Writer/Notes.inkpdf"]);
+    expect(ops).toEqual(["write /docs/Papeer/Notes.inkpdf.tmp", "rename /docs/Papeer/Notes.inkpdf.tmp -> /docs/Papeer/Notes.inkpdf"]);
     const s = useStore.getState();
     expect(s.dirty).toBe(false);
     expect(s.saveState).toBe("saved");
-    expect(s.filePath).toBe("/docs/Tablet PDF Writer/Notes.inkpdf");
+    expect(s.filePath).toBe("/docs/Papeer/Notes.inkpdf");
     expect(parseProject(disk.get(s.filePath!) as Uint8Array).pages[0].strokes).toHaveLength(1);
-    expect(JSON.parse(disk.get("/appdata/session.json") as string)).toEqual({ files: [s.filePath], active: 0 });
+    expect(JSON.parse(disk.get("/support/com.mariushorne.papeer/session.json") as string)).toEqual({ files: [s.filePath], active: 0 });
   });
 
   it("does not overwrite an existing library file with the same name", async () => {
-    disk.set("/docs/Tablet PDF Writer/Notes.inkpdf", new Uint8Array());
+    disk.set("/docs/Papeer/Notes.inkpdf", new Uint8Array());
     edit("a");
     await flushSave();
-    expect(useStore.getState().filePath).toBe("/docs/Tablet PDF Writer/Notes 2.inkpdf");
+    expect(useStore.getState().filePath).toBe("/docs/Papeer/Notes 2.inkpdf");
   });
 
   it("saves edits made while a save is in flight", async () => {
@@ -123,12 +129,12 @@ describe("tabs", () => {
     expect(ids()).toEqual(["b"]);
     st().switchTab(0, 0);
     expect(ids()).toEqual(["a"]);
-    expect(st().filePath).toBe("/docs/Tablet PDF Writer/Notes.inkpdf");
+    expect(st().filePath).toBe("/docs/Papeer/Notes.inkpdf");
     st().undo();
     expect(ids()).toEqual([]);
     st().switchTab(1, 0);
     expect(ids()).toEqual(["b"]);
-    expect(st().filePath).toBe("/docs/Tablet PDF Writer/Other.inkpdf");
+    expect(st().filePath).toBe("/docs/Papeer/Other.inkpdf");
   });
 
   it("remembers every open file and reopens them as tabs", async () => {
@@ -139,8 +145,8 @@ describe("tabs", () => {
     await flushSave();
     useStore.getState().switchTab(0, 0);
     await flushSave(); // session is written on save/tab events; force one here
-    const session = { files: ["/docs/Tablet PDF Writer/Notes.inkpdf", "/docs/Tablet PDF Writer/Other.inkpdf"], active: 0 };
-    disk.set("/appdata/session.json", JSON.stringify(session));
+    const session = { files: ["/docs/Papeer/Notes.inkpdf", "/docs/Papeer/Other.inkpdf"], active: 0 };
+    disk.set("/support/com.mariushorne.papeer/session.json", JSON.stringify(session));
 
     while (useStore.getState().tabs.length > 1) useStore.getState().closeTab(0);
     useStore.getState().closeTab(0);
@@ -163,5 +169,33 @@ describe("tabs", () => {
     expect(st().tabs).toHaveLength(1);
     expect(st().pages[0].strokes).toHaveLength(0);
     expect(st().name).toBe("Untitled");
+  });
+});
+
+describe("migration from the old app name", () => {
+  const oldDoc = "/docs/Tablet PDF Writer/Notes.inkpdf";
+  const oldSession = "/support/com.mariushorne.tabletpdfwriter/session.json";
+  const project = () => {
+    const page = blankPage();
+    return serializeProject({ pages: [{ ...page, strokes: [stroke("old")] }], pdfBytes: null });
+  };
+
+  it("moves the library folder and reopens the old session's documents", async () => {
+    disk.set(oldDoc, project());
+    disk.set(oldSession, JSON.stringify({ files: [oldDoc], active: 0 }));
+    expect(await restoreLastSession()).toBe(true);
+    expect(useStore.getState().filePath).toBe("/docs/Papeer/Notes.inkpdf");
+    expect(useStore.getState().pages[0].strokes.map((x) => x.id)).toEqual(["old"]);
+    expect(disk.has(oldDoc)).toBe(false);
+    expect(disk.has(oldSession)).toBe(true); // the old app's data is left alone
+  });
+
+  it("never overwrites an existing Papeer library", async () => {
+    disk.set(oldDoc, project());
+    disk.set("/docs/Papeer/Mine.inkpdf", project());
+    disk.set(oldSession, JSON.stringify({ files: [oldDoc], active: 0 }));
+    expect(await restoreLastSession()).toBe(true);
+    expect(disk.has(oldDoc)).toBe(true);
+    expect(useStore.getState().filePath).toBe(oldDoc);
   });
 });

@@ -1,10 +1,10 @@
-import { appDataDir, documentDir, join } from "@tauri-apps/api/path";
+import { appDataDir, dirname, documentDir, join } from "@tauri-apps/api/path";
 import { exists, mkdir, readFile, readTextFile, rename, writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { isTauri } from "../platform";
 import { PROJECT_EXT } from "./project";
 
 /**
- * Where autosaved documents live. Desktop: real files in ~/Documents/Tablet PDF Writer/.
+ * Where autosaved documents live. Desktop: real files in ~/Documents/Papeer/.
  * Web: the browser's localStorage (for testing; limited to a few MB per site).
  */
 export interface DocStore {
@@ -15,11 +15,39 @@ export interface DocStore {
   read(path: string): Promise<Uint8Array | null>;
   readSession(): Promise<string | null>;
   writeSession(json: string): Promise<void>;
+  /** One-time move of data saved under an older app name. */
+  migrate?(): Promise<void>;
 }
 
 const safeName = (name: string) => name.replace(/[\\/:*?"<>|]/g, "-").trim() || "Untitled";
 
-export const libraryDir = async () => join(await documentDir(), "Tablet PDF Writer");
+export const LIBRARY_NAME = "Papeer";
+export const libraryDir = async () => join(await documentDir(), LIBRARY_NAME);
+
+/** Names used before the app was called Papeer. */
+const LEGACY = { library: "Tablet PDF Writer", identifier: "com.mariushorne.tabletpdfwriter" };
+
+/**
+ * Moves ~/Documents/Tablet PDF Writer → ~/Documents/Papeer and carries over the list of
+ * open documents from the old app's data folder. Never overwrites anything that exists.
+ */
+async function migrateLegacy() {
+  const oldDir = await join(await documentDir(), LEGACY.library);
+  const newDir = await libraryDir();
+  const moved = (await exists(oldDir)) && !(await exists(newDir));
+  if (moved) await rename(oldDir, newDir);
+
+  const appData = await appDataDir();
+  const newSession = await join(appData, "session.json");
+  if (await exists(newSession)) return;
+  const oldSession = await join(await dirname(appData), LEGACY.identifier, "session.json");
+  if (!(await exists(oldSession))) return;
+  const saved = JSON.parse(await readTextFile(oldSession)) as { files?: string[]; filePath?: string; active?: number };
+  const files = (saved.files ?? (saved.filePath ? [saved.filePath] : [])).map((f) =>
+    moved && f.startsWith(oldDir) ? newDir + f.slice(oldDir.length) : f,
+  );
+  await fileStore.writeSession(JSON.stringify({ files, active: saved.active ?? 0 }));
+}
 
 export const fileStore: DocStore = {
   async newPath(name) {
@@ -47,6 +75,7 @@ export const fileStore: DocStore = {
     if (!(await exists(dir))) await mkdir(dir, { recursive: true });
     await writeTextFile(await join(dir, "session.json"), json);
   },
+  migrate: migrateLegacy,
 };
 
 /** Prefix for documents kept in browser storage; reads like a folder so names display normally. */

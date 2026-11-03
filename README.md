@@ -1,10 +1,10 @@
-# Tablet PDF Writer
+# Papeer
 
 --------------------------------
 | AI GENERATED, like all of it |
 --------------------------------
 
-Handwrite on PDFs with a pen tablet, reMarkable-style. Desktop app for macOS, Windows and Linux, plus a web version for testing.
+*Papeer* — Norwegian dialect for *papir*, paper. Handwrite on PDFs with a pen tablet, reMarkable-style. Desktop app for macOS, Windows and Linux, plus a web version for testing.
 
 - Open a PDF or start a blank notebook, and write with pressure-sensitive pens: fineliner, ballpoint, fountain pen, brush, pencil. A highlighter is included.
 - Pages grow downward when you write near the bottom, so each page can have its own length.
@@ -12,7 +12,7 @@ Handwrite on PDFs with a pen tablet, reMarkable-style. Desktop app for macOS, Wi
 - Page thumbnails, tabs for several documents, and a stroke eraser. Flip the pen to erase (macOS).
 - Lasso select & move, undo/redo, and Light / Sepia / Dark themes.
 - **Autosave**: every document is saved continuously, and open tabs reopen on launch.
-  - Desktop: saved to `Documents/Tablet PDF Writer/*.inkpdf`, an editable project (zip of the original PDF + strokes).
+  - Desktop: saved to `Documents/Papeer/*.inkpdf`, an editable project (zip of the original PDF + strokes).
   - Web: saved in the browser's localStorage. Use **Download** to keep a copy.
 - **Export PDF**: flattened output. Original pages stay vector and selectable, and ink is vector paths.
 

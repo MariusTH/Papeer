@@ -34,7 +34,7 @@ async function buildMenu() {
   const st = useStore.getState;
 
   const app = await Submenu.new({
-    text: "Tablet PDF Writer",
+    text: "Papeer",
     items: [
       await PredefinedMenuItem.new({ item: { About: null } }),
       await sep(),
@@ -122,7 +122,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const title = `${dirty ? "● " : ""}${name} — Tablet PDF Writer`;
+    const title = `${dirty ? "● " : ""}${name} — Papeer`;
     document.title = title;
     if (isTauri) getCurrentWindow().setTitle(title).catch(() => {});
   }, [name, dirty]);

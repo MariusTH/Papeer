@@ -8,7 +8,7 @@ export { libraryDir } from "./storage";
 
 /**
  * Continuous autosave. Every edited document is stored: in the file the user chose, or in
- * a new one in the library (desktop: ~/Documents/Tablet PDF Writer/, web: localStorage).
+ * a new one in the library (desktop: ~/Documents/Papeer/, web: localStorage).
  * Writes are atomic, and the documents open in tabs are reopened on launch.
  */
 
@@ -124,6 +124,11 @@ export function startAutosave(): () => void {
 /** Reopens the documents that were open when the app last closed (or was killed). */
 export async function restoreLastSession(): Promise<boolean> {
   try {
+    try {
+      await docStore().migrate?.();
+    } catch (e) {
+      console.error("could not migrate data from the old app name", e);
+    }
     const json = await docStore().readSession();
     if (!json) return false;
     const saved = JSON.parse(json) as { files?: string[]; active?: number; filePath?: string };
